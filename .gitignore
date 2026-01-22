@@ -1,0 +1,9 @@
+*.bin
+*.bmp
+*.mp3
+*.png
+*.jpg
+*.jpeg
+dataset
+venv
+.idea
