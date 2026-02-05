@@ -1,4 +1,4 @@
-# K-means_Compression_Algorithm
+# Cluster_Based_Compression_Algorithm
 This compression algorithm, is based on dictionary like structure, which allows to reconstruct
 data.
 # File structure
