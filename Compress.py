@@ -22,7 +22,6 @@ def convert_to_bmp(input_path, output_path=None):
         return output_path
 
     except Exception as e:
-        print(f"Błąd podczas konwersji {input_path}: {e}")
         return ""
 
 
@@ -250,10 +249,9 @@ if __name__ == "__main__":
 
     bmp_path = convert_to_bmp(args.input)
     if not bmp_path:
-        print("Błąd konwersji do BMP!")
-        exit(1)
-
-    args.input = bmp_path
+        print("Wyktyto plik nieobrazowy")
+    else:
+        args.input = bmp_path
 
     if not args.auto:
         while True:
