@@ -14,5 +14,5 @@ data.
 <br>• bmp_header (if BMP)</br>
 <br>• centroids (n_clusters x chunk_size)</br>
 <br>• saved data, as id's of closest cluster (how_many_bits_per_ID x chunk_count bits)</br>
-<br>Because this algorithm is based on k-means clusterization, data during decompression is lost, 
+<br>Because this algorithm is based on clusterization, data during decompression is lost, 
 but that loss is dependent on ammount of clusters and their size</br></p>
