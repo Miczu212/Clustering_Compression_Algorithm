@@ -2,8 +2,6 @@
 import argparse, struct
 import numpy as np
 import math
-import os
-from pathlib import Path
 
 
 def unpack_bits(data, bits_per_id, num_ids):
@@ -548,11 +546,8 @@ def cluster_decompress(input_path, output_path, original_path=None):
         if (i + 1) % 10000 == 0:
             print(f"Odtworzono {i + 1}/{num_segments} segmentów...")
 
-    # Połącz wszystkie segmenty
     reconstructed = np.concatenate(reconstructed_parts)
     print(f"Odtworzono {len(reconstructed)} bajtów danych")
-
-    # Przycięcie do oryginalnego rozmiaru (usuń padding dodany w kompresji)
     if len(reconstructed) > original_data_size:
         print(f"Usuwanie paddingu...")
         reconstructed = reconstructed[:original_data_size]
@@ -592,8 +587,6 @@ def cluster_decompress(input_path, output_path, original_path=None):
                 pass
         else:
             print(f"Uwaga: Nagłówek BMP może być uszkodzony")
-
-    # Porównanie z oryginalnym plikiem jeśli podano ścieżkę
     if original_path:
         if is_bmp:
             # Dla obrazów używamy porównania pikseli
