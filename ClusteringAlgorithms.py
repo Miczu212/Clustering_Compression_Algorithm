@@ -1,10 +1,12 @@
 import numpy as np
 import time
 from sklearn.cluster import MiniBatchKMeans, DBSCAN
-def DBSCANCluster(chunks,chunk_size,n_clusters):
+from sklearn.mixture import GaussianMixture
+from sklearn.decomposition import PCA
+from sklearn.metrics import pairwise_distances_argmin_min
+def DBSCANCluster(chunks,chunk_size,max_samples_for_dbscan):
     print("\n=== DBSCAN z ograniczeniem czasu ===")
     print(f"Liczba punktów: {len(chunks)}")
-    max_samples_for_dbscan = 50000
     if len(chunks) > max_samples_for_dbscan:
         print(f"Próbkuję dane do {max_samples_for_dbscan} punktów dla DBSCAN...")
         indices = np.random.choice(len(chunks), max_samples_for_dbscan, replace=False)
@@ -66,7 +68,7 @@ def DBSCANCluster(chunks,chunk_size,n_clusters):
         if time.time() - start_time > timeout:
             break
     if best_labels is None or len(best_centers) == 0:
-        n_forced = min(n_clusters, 32)
+        n_forced = min(99999, 32)
         segment_sums = np.sum(chunks, axis=1)
         kmeans_simple = MiniBatchKMeans(n_clusters=n_forced, batch_size=1000, n_init=1)
         sum_labels = kmeans_simple.fit_predict(segment_sums.reshape(-1, 1))
@@ -115,4 +117,100 @@ def KMEANSCluster(chunks,n_clusters):
     Cluster = MiniBatchKMeans(n_clusters=n_clusters, n_init=3, random_state=42, batch_size=1000)
     labels = Cluster.fit_predict(chunks)
     centers = np.uint8(np.clip(Cluster.cluster_centers_, 0, 255))
+    return centers, labels
+
+
+def GAUSSIANCluster(chunks, chunk_size, n_clusters, max_samples):
+    n_samples = len(chunks)
+    print(f"Liczba punktów: {n_samples}, docelowe klastry: {n_clusters}")
+    use_pca = chunk_size > 10
+    if use_pca:
+        pca_dim = min(10, chunk_size, n_samples - 1)
+        pca = PCA(n_components=pca_dim)
+        data_for_gmm = pca.fit_transform(chunks.astype(np.float32))
+    else:
+        data_for_gmm = chunks.astype(np.float32)
+        pca_dim = chunk_size
+    data_mean = data_for_gmm.mean(axis=0)
+    data_std = data_for_gmm.std(axis=0) + 1e-8
+    data_normalized = (data_for_gmm - data_mean) / data_std
+    d = data_normalized.shape[1]
+    if len(data_normalized) > max_samples:
+        indices = np.random.choice(len(data_normalized), max_samples, replace=False)
+        sampled_data = data_normalized[indices]
+    else:
+        sampled_data = data_normalized
+        indices = np.arange(len(data_normalized))
+    n_train = len(sampled_data)
+    print(f"Liczba próbek treningowych: {n_train}, wymiar: {d}")
+    strategies = [
+        ('full', d * (d + 1) // 2 + 1, 1e-6, 3),
+        ('full', d * (d + 1) // 2 + 1, 1e-2, 3),
+        ('diag', d + 1, 1e-6, 2),
+        ('diag', d + 1, 1e-2, 2),
+        ('spherical', 2, 1e-6, 1),
+        ('spherical', 2, 1e-2, 1),
+    ]
+    target_n = min(n_clusters, n_train - 1) if n_train > 1 else 1
+    successful_results = []
+    for cov_type, min_samples_per_comp, reg, complexity in strategies:
+        max_possible_comp = n_train // min_samples_per_comp
+        if max_possible_comp < 1:
+            continue
+        n_try = min(target_n, max_possible_comp)
+        for n_comp in range(n_try, 0, -1):
+            try:
+                print(f"  Próba: {cov_type}, n_comp={n_comp}, reg_covar={reg}")
+                gmm = GaussianMixture(
+                    n_components=n_comp,
+                    covariance_type=cov_type,
+                    reg_covar=reg,
+                    random_state=42,
+                    n_init=3,
+                    max_iter=300,
+                    tol=1e-3
+                )
+                gmm.fit(sampled_data)
+                if len(sampled_data) == len(data_normalized):
+                    labels_norm = gmm.predict(data_normalized)
+                else:
+                    labels_sampled = gmm.predict(sampled_data)
+                    centers_norm = gmm.means_
+                    remaining = np.ones(len(data_normalized), dtype=bool)
+                    remaining[indices] = False
+                    full_labels = -np.ones(len(data_normalized), dtype=int)
+                    full_labels[indices] = labels_sampled
+                    if np.any(remaining):
+                        remaining_data = data_normalized[remaining]
+                        closest = pairwise_distances_argmin_min(remaining_data, centers_norm)[0]
+                        full_labels[remaining] = closest
+                    labels_norm = full_labels
+                if use_pca:
+                    centers_norm = gmm.means_
+                    centers_denorm = centers_norm * data_std + data_mean
+                    centers_orig = pca.inverse_transform(centers_denorm)
+                else:
+                    centers_norm = gmm.means_
+                    centers_orig = centers_norm * data_std + data_mean
+                centers = np.uint8(np.clip(centers_orig, 0, 255))
+                labels = labels_norm.astype(np.int32)
+                unique = np.unique(labels)
+                if len(unique) != n_comp:
+                    mapping = {old: new for new, old in enumerate(sorted(unique))}
+                    labels = np.array([mapping[l] for l in labels])
+                    centers = centers[sorted(unique)]
+
+                print(f"  ✓ Sukces! Klastry: {len(centers)}, złożoność: {cov_type}")
+                successful_results.append((len(centers), complexity, centers, labels))
+                break
+            except Exception as e:
+                print(f"    Błąd: {e.__class__.__name__}: {str(e)}")
+                continue
+
+    if not successful_results:
+        return [], []
+    successful_results.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    best = successful_results[0]
+    print(f"\nWybrano najlepszy wynik: {best[0]} klastrów, złożoność={best[1]}")
+    centers, labels = best[2], best[3]
     return centers, labels

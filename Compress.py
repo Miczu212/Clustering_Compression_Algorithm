@@ -43,7 +43,7 @@ def pack_bits(ids, bits_per_id):
     return bytes(packed)
 
 
-def cluster_compress(input_path, output_path, chunk_size=6, n_clusters=256):
+def cluster_compress(input_path, output_path, chunk_size, n_clusters,max_samples):
     with open(input_path, "rb") as f:
         data = f.read()
     print(f"Wczytano {len(data)} bajtów z {input_path}")
@@ -75,7 +75,9 @@ def cluster_compress(input_path, output_path, chunk_size=6, n_clusters=256):
     if args.algorithm == "KMEANS":
         centers,labels=Algorithms.KMEANSCluster(chunks,n_clusters)
     elif args.algorithm == "DBSCAN":
-        centers,labels=Algorithms.DBSCANCluster(chunks,chunk_size,n_clusters)
+        centers,labels=Algorithms.DBSCANCluster(chunks,chunk_size,max_samples)
+    elif args.algorithm == "GAUSSIAN":
+        centers,labels=Algorithms.GAUSSIANCluster(chunks,chunk_size,n_clusters,max_samples)
     bits_per_id = max(1, math.ceil(math.log2(len(centers))))
     with open(output_path, "wb") as f:
         # 1. Flaga czy to BMP (1 bajt)
@@ -141,12 +143,20 @@ if __name__ == "__main__":
         print("Wyktyto plik nieobrazowy")
     else:
         args.input = bmp_path
-
+    n_clusters = 0
+    max_samples = 0
     if not args.auto:
         while True:
             try:
-                chunk_size_input = input("\nRozmiar segmentu (chunk_size) [domyślnie 6]: ").strip()
-                chunk_size = int(chunk_size_input) if chunk_size_input else 6
+                chunk_size_default=0
+                if args.algorithm == "KMEANS":
+                    chunk_size_default=6
+                elif args.algorithm == "DBSCAN":
+                    chunk_size_default = 6
+                elif args.algorithm == "GAUSSIAN":
+                    chunk_size_default = 1
+                chunk_size_input = input(f"\nRozmiar segmentu (chunk_size) [domyślnie {chunk_size_default}]: ").strip()
+                chunk_size = int(chunk_size_input) if chunk_size_input else chunk_size_default
                 if chunk_size <= 0:
                     print("Rozmiar musi być > 0")
                     continue
@@ -154,15 +164,32 @@ if __name__ == "__main__":
             except ValueError:
                 print("Wprowadź liczbę całkowitą")
     else:
-        chunk_size = 6
-
+        chunk_size=0
+        if args.algorithm == "KMEANS":
+            chunk_size = 6
+        elif args.algorithm == "DBSCAN":
+            chunk_size = 6
+        elif args.algorithm == "GAUSSIAN":
+            chunk_size = 1
     if not args.auto:
         while True:
             try:
-                n_clusters_input = input("Liczba klastrów (n_clusters) [domyślnie 256]: ").strip()
-                n_clusters = int(n_clusters_input) if n_clusters_input else 256
+                n_clusters_default=0
+                if args.algorithm == "KMEANS":
+                    n_clusters_default=256
+                elif args.algorithm == "GAUSSIAN":
+                    n_clusters_default = 20
+                if args.algorithm != "DBSCAN":
+                    n_clusters_input = input(f"Liczba klastrów (n_clusters) [domyślnie {n_clusters_default}]: ").strip()
+                    n_clusters = int(n_clusters_input) if n_clusters_input else n_clusters_default
+                if args.algorithm == "DBSCAN" or args.algorithm =="GAUSSIAN":
+                    max_samples_input = input("Maksymalna liczba próbek [domyślnie 10000]: ").strip()
+                    max_samples = int(max_samples_input) if max_samples_input else 10000
                 if n_clusters <= 0:
                     print("Liczba klastrów musi być > 0")
+                    continue
+                if max_samples <= 0:
+                    print("Liczba próbek musi być > 0")
                     continue
                 break
             except ValueError:
@@ -175,4 +202,4 @@ if __name__ == "__main__":
     print(f"Liczba klastrów: {n_clusters}")
     print()
 
-    cluster_compress(args.input, args.output, chunk_size, n_clusters)
+    cluster_compress(args.input, args.output, chunk_size, n_clusters,max_samples)
